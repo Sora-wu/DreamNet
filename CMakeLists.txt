@@ -60,3 +60,8 @@ install(
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/DreamNet
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
+
+option(DREAM_BUILD_EXAMPLES "Build DreamNet example programs" ON)
+if(DREAM_BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
