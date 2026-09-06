@@ -14,7 +14,7 @@ class EchoClient {
 public:
     EchoClient(Dream::EventLoop* loop, const Dream::Address& address): loop_(loop), client_(loop, address) {
         client_.setConnectionCallback([this](Dream::TcpConnectionPtr conn){ onConnection(conn); });
-        client_.setMessageCallback([this](Dream::TcpConnectionPtr conn, Dream::Buffer& buffer){ return onMessage(conn, buffer); });
+        client_.setMessageCallback([this](Dream::TcpConnectionPtr conn, const Dream::Buffer& buffer){ return onMessage(conn, buffer); });
     }
 
     void connect() {
@@ -39,7 +39,7 @@ private:
         std::println("Connection close: {}", conn->getRemoteAddress().getIP());
     }
 
-    uint32_t onMessage(Dream::TcpConnectionPtr conn, Dream::Buffer& buffer) {
+    uint32_t onMessage(Dream::TcpConnectionPtr conn, const Dream::Buffer& buffer) {
         std::string_view msg = buffer.getView();
         std::print("recv: {}", msg);
         return msg.size();

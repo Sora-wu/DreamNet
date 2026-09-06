@@ -11,7 +11,7 @@ class EchoServer {
 public:
     EchoServer(Dream::EventLoop* loop, const Dream::Address& address) : loop_(loop), server_(loop, address) {
         server_.setConnectionCallback([this](Dream::TcpConnectionPtr conn){ onConnection(conn); });
-        server_.setMessageCallback([this](Dream::TcpConnectionPtr conn, Dream::Buffer& buffer){ return onMessage(conn, buffer); });
+        server_.setMessageCallback([this](Dream::TcpConnectionPtr conn, const Dream::Buffer& buffer){ return onMessage(conn, buffer); });
     }
 
     void start() {
@@ -29,7 +29,7 @@ private:
         std::println("Connection close: {}", conn->getRemoteAddress().getIP());
     }
 
-    uint32_t onMessage(Dream::TcpConnectionPtr conn, Dream::Buffer& buffer) {
+    uint32_t onMessage(Dream::TcpConnectionPtr conn, const Dream::Buffer& buffer) {
         std::string_view msg = buffer.getView();
         std::print("recv: {}", msg);
         conn->send(buffer);

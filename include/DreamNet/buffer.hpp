@@ -114,6 +114,15 @@ namespace Dream {
             return {buf_.data() + readIndex_, writeIndex_ - readIndex_};
         }
 
+        /**
+         * 预览可读数据，不移动读指针。
+         * 搭配 consume() 使用可以手动控制读取进度，且避免隐式 compact。
+         */
+        [[nodiscard]] std::span<const char> peek(size_t peekSize) const {
+            peekSize = std::min(peekSize, writeIndex_ - readIndex_);
+            return {buf_.data() + readIndex_, peekSize};
+        }
+
         /// 移动读指针，消耗 n 个字节（调用前应确保 n <= readableSize()）
         void consume(size_t n) {
             readIndex_ += std::min(n, readableSize());
