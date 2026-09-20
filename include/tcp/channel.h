@@ -25,6 +25,7 @@ namespace Dream::detail {
         static constexpr uint32_t EVENT_WRITE = 0x4;
         static constexpr uint32_t EVENT_ERROR = 0x8;
         static constexpr uint32_t EVENT_HUP = 0x10;
+        static constexpr uint32_t EVENT_ET = 0x20;
         using Functor = std::function<void()>;
 
         Channel(EventLoopImpl* loop, int fd);
@@ -40,8 +41,10 @@ namespace Dream::detail {
 
         void enableReading();
         void enableWriting();
+        void enableET();
         void disableReading();
         void disableWriting();
+        void disableET();
         void disableAll();
         [[nodiscard]] uint32_t getListenEvent() const;
         void update();

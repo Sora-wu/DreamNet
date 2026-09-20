@@ -48,6 +48,11 @@ void Channel::enableWriting() {
     update();
 }
 
+void Channel::enableET() {
+    listenEvent_ |= EVENT_ET;
+    update();
+}
+
 void Channel::disableReading() {
     listenEvent_ &= ~EVENT_READ;
     update();
@@ -55,6 +60,11 @@ void Channel::disableReading() {
 
 void Channel::disableWriting() {
     listenEvent_ &= ~EVENT_WRITE;
+    update();
+}
+
+void Channel::disableET() {
+    listenEvent_ &= ~EVENT_ET;
     update();
 }
 

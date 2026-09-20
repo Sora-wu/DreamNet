@@ -23,6 +23,21 @@ namespace {
         if (epollEvents & EPOLLOUT) event |= Channel::EVENT_WRITE;
         if (epollEvents & EPOLLERR) event |= Channel::EVENT_ERROR;
         if (epollEvents & EPOLLHUP) event |= Channel::EVENT_HUP;
+        if (epollEvents & EPOLLET) event |= Channel::EVENT_ET;
+
+        return event;
+    }
+
+    // 适配器
+    uint32_t convertCommonEvents(uint32_t commonEvents) {
+        uint32_t event = 0;
+
+        if (commonEvents & Channel::EVENT_READ) event |= EPOLLIN;
+        if (commonEvents & Channel::EVENT_PRI) event |= EPOLLPRI;
+        if (commonEvents & Channel::EVENT_WRITE) event |= EPOLLOUT;
+        if (commonEvents & Channel::EVENT_ERROR) event |= EPOLLERR;
+        if (commonEvents & Channel::EVENT_HUP) event |= EPOLLHUP;
+        if (commonEvents & Channel::EVENT_ET) event |= EPOLLET;
 
         return event;
     }
@@ -93,7 +108,7 @@ void EpollPoller::update(int op, Channel* channel) {
     const uint32_t event = channel->getListenEvent();
     const int fd = channel->getFd();
     epoll_event ev{};
-    ev.events = event;
+    ev.events = convertCommonEvents(event);
     ev.data.ptr = channel;
 
     if (epoll_ctl(epFD_, op, fd, &ev) < 0) {

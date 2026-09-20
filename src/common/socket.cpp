@@ -60,7 +60,7 @@ int Socket::accept(Address& peerAddress) {
     socklen_t addrlen = sizeof(addr);
     int connfd = ::accept4(fd_, (sockaddr*)&addr, &addrlen, SOCK_CLOEXEC | SOCK_NONBLOCK);
     if (connfd < 0) {
-        LOG_ERROR("accept error, fd: {}, {}", fd_, strerror(errno));
+        return -errno;
     }
 
     peerAddress.setAddr(addr);

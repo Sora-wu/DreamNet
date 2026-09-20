@@ -51,6 +51,7 @@ void TcpConnectionImpl::connectEstablished() {
     channel_->setOnCloseEvent([this] { handleClose(); });
     channel_->setOnErrorEvent([this] { handleError(); });
     channel_->enableReading();
+    channel_->enableET();
 
     if (connectionCallback_) {
         connectionCallback_(conn_->shared_from_this());
@@ -175,6 +176,13 @@ void TcpConnectionImpl::sendInLoop(Buffer& buffer) {
         buffer.consume(buffer.readableSize()); // 消费源 buffer，避免下次重复发送
         if (!channel_->isWriting()) {
             channel_->enableWriting();
+            // 立即再尝试一次写，抵消 ET 注册竞态
+            // 如果内核发送缓冲恰好在 write() 返回 EAGAIN 之后、epoll_ctl() 之前这段极小窗口内被对端排空，
+            // 那么注册 EPOLLOUT 时 fd 已经可写，ET 认为「没有新的边沿」，就不会再上报
+            // 所以这里再试一次
+            if (outBuffer_.readableSize() > 0) {
+                handleWrite();
+            }
         }
     }
 }
@@ -183,29 +191,37 @@ void TcpConnectionImpl::handleRead() {
     char buff[BUFFER_SIZE]{};
     int fd = socket_.getFd();
 
-    ssize_t n = recv(fd, buff, BUFFER_SIZE, 0);
-    if (n == 0) {
-        handleClose();
-        return;
-    }
-    if (n < 0) {
-        if (errno != EAGAIN && errno != EWOULDBLOCK) {
-            handleError();
+    while (true) {
+        ssize_t n = recv(fd, buff, BUFFER_SIZE, 0);
+        if (n == 0) {
+            handleClose();
+            return;
         }
-        return;
-    }
-
-    inBuffer_.write(std::span(buff, n));
-    if (messageCallback_) {
-        const uint32_t consume = messageCallback_(conn_->shared_from_this(), inBuffer_);
-        inBuffer_.consume(consume);
-
-        if (inBuffer_.readableSize() > HIGH_WATER_MARK_SIZE) {
-            TcpConnectionPtr conn = conn_->shared_from_this();
-            if (highWaterMarkCallback_) {
-                highWaterMarkCallback_(conn);
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
             }
-            close(conn_->shared_from_this());
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;
+            }
+
+            handleError();
+            return;
+        }
+
+        inBuffer_.write(std::span(buff, n));
+        if (messageCallback_) {
+            const uint32_t consume = messageCallback_(conn_->shared_from_this(), inBuffer_);
+            inBuffer_.consume(consume);
+
+            if (inBuffer_.readableSize() > HIGH_WATER_MARK_SIZE) {
+                TcpConnectionPtr conn = conn_->shared_from_this();
+                if (highWaterMarkCallback_) {
+                    highWaterMarkCallback_(conn);
+                }
+                close(conn_->shared_from_this());
+                return;
+            }
         }
     }
 }
@@ -217,28 +233,33 @@ void TcpConnectionImpl::handleWrite() {
         return;
     }
 
-    const std::span<const char> data = outBuffer_.peek();
-    ssize_t n = write(fd, data.data(), data.size());
-    if (n < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            return; // 内核发送缓冲满，保持写使能，等待下次可写事件
-        }
-        LOG_ERROR("write error: {}", strerror(errno));
-        return;
-    }
-
-    outBuffer_.consume(n);
-    if (outBuffer_.readableSize() == 0) {
-        if (writeCompleteCallback_) {
-            writeCompleteCallback_(conn_->shared_from_this());
+    while (outBuffer_.readableSize() > 0) {
+        const std::span<const char> data = outBuffer_.peek();
+        ssize_t n = write(fd, data.data(), data.size());
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return; // 内核发送缓冲满，保持写使能，等待下次可写事件
+            }
+            LOG_ERROR("write error: {}", strerror(errno));
+            return;
         }
 
-        if (shutdownAfterWrite_) {
-            shutdownAfterWrite_ = false;
-            socket_.shutdown();
-        }
-        channel_->disableWriting();
+        outBuffer_.consume(n);
     }
+
+    if (writeCompleteCallback_) {
+        writeCompleteCallback_(conn_->shared_from_this());
+    }
+
+    if (shutdownAfterWrite_) {
+        shutdownAfterWrite_ = false;
+        socket_.shutdown();
+    }
+
+    channel_->disableWriting();
 }
 
 void TcpConnectionImpl::handleClose() {

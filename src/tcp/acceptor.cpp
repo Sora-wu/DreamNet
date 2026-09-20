@@ -27,6 +27,7 @@ Acceptor::Acceptor(EventLoopImpl* loop, const Address& address) :
 void Acceptor::listen() {
     socket_.listen();
     acceptChannel_->enableReading();
+    acceptChannel_->enableET();
 }
 
 void Acceptor::setNewConnectionFunc(NewConnectionFunc func) {
@@ -43,16 +44,26 @@ void Acceptor::initSocket(const Address& address) {
 
 void Acceptor::onAccept() {
     Address addr{};
-    int connfd = socket_.accept(addr);
-    if (connfd < 0) {
-        return;
-    }
+    while (true) {
+        int connfd = socket_.accept(addr);
+        if (connfd < 0) {
+            if (connfd == -EINTR) {
+                continue;
+            }
+            if (connfd == -EAGAIN || connfd == -EWOULDBLOCK) {
+                break;
+            }
 
-    if (newConnectionFunc_) {
-        newConnectionFunc_(connfd, addr);
-        return;
-    }
+            LOG_ERROR("accept error: {}", strerror(-connfd));
+            break;
+        }
 
-    LOG_WARN("the accept callback is not set yet, will close new client by default");
-    ::close(connfd); // 如果没有注册新客户回调，那么就关闭新客户端的连接
+        if (newConnectionFunc_) {
+            newConnectionFunc_(connfd, addr);
+            continue;
+        }
+
+        LOG_WARN("the accept callback is not set yet, will close new client by default");
+        ::close(connfd); // 如果没有注册新客户回调，那么就关闭新客户端的连接
+    }
 }
