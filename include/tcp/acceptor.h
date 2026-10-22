@@ -17,8 +17,9 @@ namespace Dream::detail {
 
     class Acceptor {
     public:
-        using NewConnectionFunc = std::function<void(int fd, const Address& addr)>;
+        using NewConnectionFunc = std::function<void(SocketFd fd, const Address& addr)>;
         Acceptor(EventLoopImpl* loop, const Address& address);
+        ~Acceptor();
 
         void listen();
         void setNewConnectionFunc(NewConnectionFunc func);

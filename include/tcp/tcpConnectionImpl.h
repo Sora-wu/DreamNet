@@ -24,7 +24,7 @@ namespace Dream::detail {
         };
 
     public:
-        TcpConnectionImpl(TcpConnection* conn, EventLoopImpl* loop, const std::string& name, int fd,
+        TcpConnectionImpl(TcpConnection* conn, EventLoopImpl* loop, const std::string& name, SocketFd fd,
                             const Address& localAddress, const Address& remoteAddress);
 
         [[nodiscard]] Address getLocalAddress() const;

@@ -8,13 +8,12 @@
 #include <tcp/eventLoopImpl.h>
 #include <common/define.h>
 
-#include <unistd.h>
-
+using namespace Dream;
 using namespace Dream::detail;
 
 Acceptor::Acceptor(EventLoopImpl* loop, const Address& address) :
     loop_(loop),
-    socket_(SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK) {
+    socket_(SOCK_STREAM) {
     acceptChannel_ = std::make_unique<Channel>(loop, socket_.getFd());
     if (!acceptChannel_) {
         LOG_FATAL("accept channel is null");
@@ -22,6 +21,10 @@ Acceptor::Acceptor(EventLoopImpl* loop, const Address& address) :
     acceptChannel_->setOnReadEvent([this] { onAccept(); }); // 如果accpet有可读事件了，那么说明有新客户端连接
 
     initSocket(address);
+}
+
+Acceptor::~Acceptor() {
+    acceptChannel_->disableAll();
 }
 
 void Acceptor::listen() {
@@ -45,16 +48,17 @@ void Acceptor::initSocket(const Address& address) {
 void Acceptor::onAccept() {
     Address addr{};
     while (true) {
-        int connfd = socket_.accept(addr);
-        if (connfd < 0) {
-            if (connfd == -EINTR) {
+        SocketFd connfd = socket_.accept(addr);
+        if (connfd == INVALID_SOCKET_FD) {
+            const int error = Socket::getLastError();
+            if (Socket::isInterrupted(error)) {
                 continue;
             }
-            if (connfd == -EAGAIN || connfd == -EWOULDBLOCK) {
+            if (Socket::isWouldBlock(error)) {
                 break;
             }
 
-            LOG_ERROR("accept error: {}", strerror(-connfd));
+            LOG_ERROR("accept error: {}", Socket::errorString(error));
             break;
         }
 
@@ -64,6 +68,6 @@ void Acceptor::onAccept() {
         }
 
         LOG_WARN("the accept callback is not set yet, will close new client by default");
-        ::close(connfd); // 如果没有注册新客户回调，那么就关闭新客户端的连接
+        Socket::close(connfd); // 如果没有注册新客户回调，那么就关闭新客户端的连接
     }
 }

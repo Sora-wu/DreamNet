@@ -12,14 +12,13 @@
 #include <common/log.hpp>
 
 #include <format>
-#include <unistd.h>
 
 using namespace Dream;
 
 detail::TcpClientImpl::TcpClientImpl(EventLoop* loop, const Address& addr) :
     loop_(loop),
     connector_(std::make_shared<Connector>(EventLoopImpl::from(loop), addr)) {
-    connector_->setNewConnectionCallback([this](int fd, const Address& addr) {
+    connector_->setNewConnectionCallback([this](SocketFd fd, const Address& addr) {
         onNewConnection(fd, addr);
     });
 }
@@ -155,24 +154,23 @@ void detail::TcpClientImpl::setHighWaterMarkCallback(HighWaterMarkCallback cb) {
     });
 }
 
-void detail::TcpClientImpl::onNewConnection(int fd, const Address& peerAddr) {
+void detail::TcpClientImpl::onNewConnection(SocketFd fd, const Address& peerAddr) {
     LOG_INFO("new client connected: {}:{}", peerAddr.getIP(), peerAddr.getPort());
 
-    sockaddr_in localAddr{};
-    socklen_t localAddrLen = sizeof(localAddr);
-    if (getsockname(fd, (sockaddr*)&localAddr, &localAddrLen) < 0) {
-        ::close(fd);
-        LOG_ERROR("getsockname failed: {}", strerror(errno));
+    Address local{};
+    if (!Socket::getLocalAddress(fd, local)) {
+        const int error = Socket::getLastError();
+        Socket::close(fd);
+        LOG_ERROR("getsockname failed: {}", Socket::errorString(error));
         return;
     }
 
-    Address local{};
-    local.setAddr(localAddr);
     const std::string connName = std::format("connection-{}:{}", local.getIP(), local.getPort());
     connection_ = std::make_shared<TcpConnection>(loop_, connName, fd, local, peerAddr);
     connection_->setConnectionCallback(connectionCallback_);
     connection_->setMessageCallback(messageCallback_);
     connection_->setWriteCompleteCallback(writeCompleteCallback_);
+    connection_->setHighWaterMarkCallback(highWaterMarkCallback_);
     std::weak_ptr weakSelf = shared_from_this();
     connection_->setCloseCallback([weakSelf](TcpConnectionPtr connection) {
         if (auto self = weakSelf.lock()) {

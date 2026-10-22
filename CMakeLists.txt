@@ -10,9 +10,30 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 file(GLOB_RECURSE SRC CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/include/* ${CMAKE_CURRENT_SOURCE_DIR}/src/*)
+if (CMAKE_SYSTEM_NAME MATCHES "Windows")
+    list(FILTER SRC EXCLUDE REGEX "/epollPoller\\.cpp$")
+else()
+    list(FILTER SRC EXCLUDE REGEX "/wsaPoller\\.cpp$")
+endif()
 add_library(DreamNet ${SRC})
 add_library(Dream::Net ALIAS DreamNet)
 set_target_properties(DreamNet PROPERTIES EXPORT_NAME Net)
+
+if (CMAKE_SYSTEM_NAME MATCHES "Linux")
+    set(PLATFORM_NAME "linux")
+    target_compile_definitions(DreamNet PUBLIC PLATFORM_LINUX)
+elseif (CMAKE_SYSTEM_NAME MATCHES "Windows")
+    set(PLATFORM_NAME "win")
+    target_compile_definitions(DreamNet PUBLIC PLATFORM_WINDOWS WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(DreamNet PRIVATE ws2_32)
+else()
+    message(FATAL_ERROR "DreamNet only supports Linux and Windows")
+endif()
+
+target_compile_features(DreamNet PUBLIC cxx_std_23)
+if (MSVC)
+    target_compile_options(DreamNet PUBLIC /utf-8 PRIVATE /permissive- /Zc:preprocessor)
+endif()
 
 target_include_directories(DreamNet
     PUBLIC
@@ -64,4 +85,10 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/DreamNet
 option(DREAM_BUILD_EXAMPLES "Build DreamNet example programs" ON)
 if(DREAM_BUILD_EXAMPLES)
     add_subdirectory(examples)
+endif()
+
+option(DREAM_BUILD_TESTS "Build DreamNet integration tests" OFF)
+if(DREAM_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
 endif()

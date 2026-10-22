@@ -10,13 +10,13 @@
 #include <memory>
 
 namespace Dream {
-    class EventLoop;
+    class DREAM_NET_API EventLoop;
 
     namespace detail {
         class TcpClientImpl;
     }
 
-    class TcpClient {
+    class DREAM_NET_API TcpClient {
     public:
         TcpClient(EventLoop* loop, const Address& address);
 

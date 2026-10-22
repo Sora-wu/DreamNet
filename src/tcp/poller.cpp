@@ -4,16 +4,20 @@
 //
 
 #include <tcp/poller.h>
-#include <tcp/epollPoller.h>
+#ifdef PLATFORM_WINDOWS
+    #include <tcp/wsaPoller.h>
+#else
+    #include <tcp/epollPoller.h>
+#endif
 
 namespace Dream::detail {
 
 Poller* Poller::getDefaultPoller() {
-#ifdef PLATFORM_LINUX
+#ifdef PLATFORM_WINDOWS
+    return new WsaPoller;
+#else
     return new EpollPoller;
 #endif
-
-    return nullptr;
 }
 
 }  // namespace Dream::detail

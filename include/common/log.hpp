@@ -18,7 +18,7 @@ class Logger {
 public:
     enum class Level {
         INFO,
-        ERROR,
+        ERR,
         FATAL,
         WARN,
         DEBUG
@@ -45,7 +45,7 @@ public:
         const char* reset = "\033[0m";
         switch (level) {
             case Level::INFO:  levelStr = "INFO";  break;
-            case Level::ERROR: levelStr = "ERROR"; color = "\033[31m"; break; // 红色
+            case Level::ERR:   levelStr = "ERROR"; color = "\033[31m"; break; // 红色
             case Level::FATAL: levelStr = "FATAL"; color = "\033[31m"; break;
             case Level::WARN:  levelStr = "WARN";  color = "\033[33m"; break; // 黄色
             case Level::DEBUG: levelStr = "DEBUG"; color = "\033[32m"; break; // 绿色
@@ -80,7 +80,7 @@ public:
     Logger::Log(Logger::Level::INFO, __FILE__, __LINE__, fmt __VA_OPT__(,) __VA_ARGS__)
 
 #define LOG_ERROR(fmt, ...) \
-    Logger::Log(Logger::Level::ERROR, __FILE__, __LINE__, fmt __VA_OPT__(,) __VA_ARGS__)
+    Logger::Log(Logger::Level::ERR, __FILE__, __LINE__, fmt __VA_OPT__(,) __VA_ARGS__)
 
 #define LOG_FATAL(fmt, ...) \
     Logger::Log(Logger::Level::FATAL, __FILE__, __LINE__, fmt __VA_OPT__(,) __VA_ARGS__)

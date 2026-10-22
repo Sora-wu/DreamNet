@@ -6,6 +6,7 @@
 #pragma once
 
 #include <thread>
+#include <string>
 
 namespace Dream {
     class EventLoop;

@@ -42,6 +42,8 @@ namespace Dream::detail {
         uint64_t addTimer(Functor callback, std::chrono::milliseconds delay, std::chrono::milliseconds interval = {});
         uint64_t addTimer(Functor callback, std::chrono::seconds delay, std::chrono::seconds interval = {});
         void removeTimer(uint64_t id);
+        [[nodiscard]] int getTimeout(int maximum) const;
+        void processTimers();
 
     private:
         void handleRead();
@@ -53,8 +55,10 @@ namespace Dream::detail {
     private:
         EventLoopImpl* loop_ = nullptr;
         std::atomic<uint64_t> currentID_ = 0;
+#ifdef PLATFORM_LINUX
         int tfd_ = -1;
         std::unique_ptr<Channel> timerChannel_;
+#endif
 
         std::multiset<Timer> timers_;
     };

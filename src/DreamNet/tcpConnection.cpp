@@ -9,12 +9,14 @@
 
 using namespace Dream;
 
-TcpConnection::TcpConnection(EventLoop* loop, const std::string& name, int fd, const Address& localAddress, const Address& remoteAddress) :
+TcpConnection::TcpConnection(EventLoop* loop, const std::string& name, SocketFd fd, const Address& localAddress, const Address& remoteAddress) :
     loop_(loop) {
     // 构造函数传shared_from_this有问题，所以改用this，在里面写shared_from_this
     impl_ = std::make_unique<detail::TcpConnectionImpl>(this,
         detail::EventLoopImpl::from(loop), name, fd, localAddress, remoteAddress);
 }
+
+TcpConnection::~TcpConnection() = default;
 
 EventLoop* TcpConnection::getLoop() const {
     return loop_;

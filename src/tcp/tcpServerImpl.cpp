@@ -22,7 +22,7 @@ detail::TcpServerImpl::TcpServerImpl(EventLoop* loop, const Address& addr) :
     loop_(loop),
     acceptor_(std::make_unique<Acceptor>(EventLoopImpl::from(loop), addr)),
     threadPool_(std::make_unique<ThreadPool>(loop)) {
-    acceptor_->setNewConnectionFunc([this](int fd, const Address& addr) {
+    acceptor_->setNewConnectionFunc([this](SocketFd fd, const Address& addr) {
         onNewConnection(fd, addr);
     });
 
@@ -109,24 +109,24 @@ void detail::TcpServerImpl::setWriteCompleteCallback(WriteCompleteCallback cb) {
     writeCompleteCallback_ = std::move(cb);
 }
 
-void detail::TcpServerImpl::onNewConnection(int fd, const Address& peerAddr) {
+void detail::TcpServerImpl::onNewConnection(SocketFd fd, const Address& peerAddr) {
     EventLoop* loop = threadPool_->getNextLoop();
     LOG_INFO("new client connected: {}:{}", peerAddr.getIP(), peerAddr.getPort());
 
-    sockaddr_in localAddr{};
-    socklen_t localAddrLen = sizeof(localAddr);
-    if (getsockname(fd, (sockaddr*)&localAddr, &localAddrLen) < 0) {
-        LOG_ERROR("getsockname failed: {}", strerror(errno));
+    Address local{};
+    if (!detail::Socket::getLocalAddress(fd, local)) {
+        const int error = detail::Socket::getLastError();
+        detail::Socket::close(fd);
+        LOG_ERROR("getsockname failed: {}", detail::Socket::errorString(error));
         return;
     }
 
-    Address local{};
-    local.setAddr(localAddr);
     const std::string connName = std::format("connection-{}", connectionID++);
     TcpConnectionPtr connection = std::make_shared<TcpConnection>(loop, connName, fd, local, peerAddr);
     connection->setConnectionCallback(connectionCallback_);
     connection->setMessageCallback(messageCallback_);
     connection->setHighWaterMarkCallback(highWaterMarkCallback_);
+    connection->setWriteCompleteCallback(writeCompleteCallback_);
     connection->setCloseCallback([this](TcpConnectionPtr conn) { onConnectionClose(conn); });
     {
         std::unique_lock lock(smutx_);

@@ -8,7 +8,6 @@
 #include <common/log.hpp>
 
 #include <cstring>
-#include <unistd.h>
 
 #include "tcp/eventLoopImpl.h"
 
@@ -35,16 +34,17 @@ void detail::Connector::start() {
         if (newConnectionCallback_) {
             state_ = State::CONNECTED;
             attemptToConnect_ = 0;
-            newConnectionCallback_(socket_.getFd(), addr_);
-            socket_.setFd(-1); // 移交fd的管理权，避免一个fd调用两次close
+            const SocketFd fd = socket_.getFd();
+            socket_.setFd(INVALID_SOCKET_FD); // 移交fd的管理权，避免一个fd调用两次close
             channel_.reset();
+            newConnectionCallback_(fd, addr_);
             return;
         }
 
         LOG_WARN("the connect callback is not set yet, will close new client by default");
         return;
     }
-    if (res == -1 && errno == EINPROGRESS) {
+    if (res != 0 && Socket::isConnectInProgress(Socket::getLastError())) {
         state_ = State::CONNECTING;
         channel_->enableWriting();
         return;
@@ -61,8 +61,7 @@ void detail::Connector::stop() {
 
     state_ = State::DISCONNECTED;
     channel_->disableAll();
-    ::close(socket_.getFd());
-    socket_.setFd(-1);
+    socket_.close();
     loop_->cancelAfter(tid_);
 }
 
@@ -89,17 +88,11 @@ void detail::Connector::handleWrite() {
         return;
     }
 
-    int error = 0;
-    socklen_t len = sizeof(error);
-    const int sockfd = socket_.getFd();
-    if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &error, &len) < 0) {
-        LOG_ERROR("getsockopt failed: {}", strerror(errno));
-        retry();
-        return;
-    }
+    const SocketFd sockfd = socket_.getFd();
+    const int error = Socket::getError(sockfd);
 
     if (error) {
-        LOG_ERROR("error: {}", error);
+        LOG_ERROR("connect error: {}", Socket::errorString(error));
         retry();
         return;
     }
@@ -108,8 +101,9 @@ void detail::Connector::handleWrite() {
     if (newConnectionCallback_) {
         state_ = State::CONNECTED;
         attemptToConnect_ = 0;
-        socket_.setFd(-1); // 移交fd的管理权，避免一个fd调用两次close
-        channel_.reset();
+        socket_.setFd(INVALID_SOCKET_FD); // 移交fd的管理权，避免一个fd调用两次close
+        // 当前仍在 Channel 的回调中，等本轮事件处理结束后再析构。
+        loop_->queueInLoop([channel = std::shared_ptr<Channel>(std::move(channel_))] {});
         newConnectionCallback_(sockfd, addr_);
         return;
     }
@@ -129,8 +123,7 @@ void detail::Connector::handleError() {
 
 void detail::Connector::retry() {
     channel_->disableAll();
-    ::close(socket_.getFd());
-    socket_.setFd(-1);
+    socket_.close();
     state_ = State::DISCONNECTED;
 
     LOG_ERROR("attempt to connect failed, try #{}", attemptToConnect_);
@@ -143,8 +136,8 @@ void detail::Connector::retry() {
 }
 
 void detail::Connector::reset() {
-    socket_ = Socket(SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK);
-    const int sockfd = socket_.getFd();
+    socket_ = Socket(SOCK_STREAM);
+    const SocketFd sockfd = socket_.getFd();
     channel_ = std::make_unique<Channel>(loop_, sockfd);
 
     std::weak_ptr weakSelf = shared_from_this();

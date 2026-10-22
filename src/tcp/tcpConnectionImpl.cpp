@@ -7,8 +7,6 @@
 #include <tcp/eventLoopImpl.h>
 #include <common/log.hpp>
 
-#include <unistd.h>
-
 #include "DreamNet/tcpConnection.h"
 
 using namespace Dream::detail;
@@ -18,7 +16,7 @@ namespace {
     constexpr uint32_t HIGH_WATER_MARK_SIZE = 1024 * 1024 * 8; // 8M
 }
 
-TcpConnectionImpl::TcpConnectionImpl(TcpConnection* conn, EventLoopImpl* loop, const std::string& name, int fd,
+TcpConnectionImpl::TcpConnectionImpl(TcpConnection* conn, EventLoopImpl* loop, const std::string& name, SocketFd fd,
                                      const Address& localAddress, const Address& remoteAddress) :
     conn_(conn),
     name_(name),
@@ -114,7 +112,7 @@ void TcpConnectionImpl::close(std::shared_ptr<const TcpConnection> self) {
     loop_->runInLoop([this, self = std::move(self)] {
         (void)self;
         if (state_ == ConnectionState::CONNECTED) {
-            state_ = ConnectionState::DISCONNECTING;
+            handleClose();
             socket_.close();
         }
     });
@@ -145,16 +143,18 @@ void TcpConnectionImpl::sendInLoop(Buffer& buffer) {
         return;
     }
 
-    int fd = socket_.getFd();
-
     if (!channel_->isWriting()) {
         const std::span<const char> data = buffer.peek();
-        ssize_t n = write(fd, data.data(), data.size());
+        std::ptrdiff_t n;
+        do {
+            n = socket_.send(data.data(), data.size());
+        } while (n < 0 && Socket::isInterrupted(Socket::getLastError()));
         if (n > 0) {
             buffer.consume(n);
         }
-        else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-            LOG_ERROR("write error: {}", strerror(errno));
+        else if (n < 0 && !Socket::isWouldBlock(Socket::getLastError())) {
+            LOG_ERROR("write error: {}", Socket::errorString(Socket::getLastError()));
+            handleClose();
             return;
         }
     }
@@ -189,19 +189,18 @@ void TcpConnectionImpl::sendInLoop(Buffer& buffer) {
 
 void TcpConnectionImpl::handleRead() {
     char buff[BUFFER_SIZE]{};
-    int fd = socket_.getFd();
-
     while (true) {
-        ssize_t n = recv(fd, buff, BUFFER_SIZE, 0);
+        const std::ptrdiff_t n = socket_.receive(buff, BUFFER_SIZE);
         if (n == 0) {
             handleClose();
             return;
         }
         if (n < 0) {
-            if (errno == EINTR) {
+            const int error = Socket::getLastError();
+            if (Socket::isInterrupted(error)) {
                 continue;
             }
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            if (Socket::isWouldBlock(error)) {
                 break;
             }
 
@@ -213,6 +212,9 @@ void TcpConnectionImpl::handleRead() {
         if (messageCallback_) {
             const uint32_t consume = messageCallback_(conn_->shared_from_this(), inBuffer_);
             inBuffer_.consume(consume);
+            if (state_ == ConnectionState::DISCONNECTED) {
+                return;
+            }
 
             if (inBuffer_.readableSize() > HIGH_WATER_MARK_SIZE) {
                 TcpConnectionPtr conn = conn_->shared_from_this();
@@ -227,23 +229,24 @@ void TcpConnectionImpl::handleRead() {
 }
 
 void TcpConnectionImpl::handleWrite() {
-    int fd = socket_.getFd();
     if (!channel_->isWriting()) {
-        LOG_ERROR("this connection {} is disable writing!", fd);
+        LOG_ERROR("this connection {} is disable writing!", socket_.getFd());
         return;
     }
 
     while (outBuffer_.readableSize() > 0) {
         const std::span<const char> data = outBuffer_.peek();
-        ssize_t n = write(fd, data.data(), data.size());
+        const std::ptrdiff_t n = socket_.send(data.data(), data.size());
         if (n < 0) {
-            if (errno == EINTR) {
+            const int error = Socket::getLastError();
+            if (Socket::isInterrupted(error)) {
                 continue;
             }
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            if (Socket::isWouldBlock(error)) {
                 return; // 内核发送缓冲满，保持写使能，等待下次可写事件
             }
-            LOG_ERROR("write error: {}", strerror(errno));
+            LOG_ERROR("write error: {}", Socket::errorString(error));
+            handleClose();
             return;
         }
 
@@ -269,6 +272,7 @@ void TcpConnectionImpl::handleClose() {
 
     LOG_INFO("peer closed connection");
     state_ = ConnectionState::DISCONNECTED;
+    channel_->disableAll();
 
     if (closeCallback_) {
         closeCallback_(conn_->shared_from_this());
@@ -280,13 +284,7 @@ void TcpConnectionImpl::handleError() {
         return;
     }
 
-    int optval{};
-    socklen_t optlen = sizeof(optval);
-    int fd = socket_.getFd();
-    if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &optval, &optlen) < 0) {
-        LOG_ERROR("getsockopt error: {}", strerror(errno));
-    }
-
-    LOG_ERROR("client error: SO_ERROR-{}", optval);
+    const int error = Socket::getError(socket_.getFd());
+    LOG_ERROR("client error: {}", Socket::errorString(error));
     handleClose();
 }

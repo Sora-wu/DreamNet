@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <DreamNet/define.h>
 #include <DreamNet/buffer.hpp>
 
 #include <functional>
@@ -12,7 +13,7 @@
 #include <memory>
 
 namespace Dream {
-    class TcpConnection;
+    class DREAM_NET_API TcpConnection;
     using TcpConnectionPtr = std::shared_ptr<TcpConnection>;
     using ConnectionCallback = std::function<void(TcpConnectionPtr)>;
     using MessageCallback = std::function<uint32_t(TcpConnectionPtr, const Buffer&)>;

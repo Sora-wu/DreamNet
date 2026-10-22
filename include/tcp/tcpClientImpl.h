@@ -34,7 +34,7 @@ namespace Dream {
             void setHighWaterMarkCallback(HighWaterMarkCallback cb);
 
         private:
-            void onNewConnection(int fd, const Address& peerAddr);
+            void onNewConnection(SocketFd fd, const Address& peerAddr);
             void onConnectionClose(TcpConnectionPtr connection);
 
         private:

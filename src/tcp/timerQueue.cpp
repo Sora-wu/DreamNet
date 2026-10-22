@@ -7,12 +7,17 @@
 #include <common/log.hpp>
 #include <tcp/eventLoopImpl.h>
 
-#include <unistd.h>
-#include <sys/timerfd.h>
+#include <algorithm>
+
+#ifdef PLATFORM_LINUX
+    #include <unistd.h>
+    #include <sys/timerfd.h>
+#endif
 
 using namespace Dream::detail;
 
 namespace {
+#ifdef PLATFORM_LINUX
     // 将任意 duration 转换为 timespec
     template <typename Rep, typename Period>
     timespec toTimespec(const std::chrono::duration<Rep, Period>& dur) {
@@ -22,6 +27,7 @@ namespace {
         ts.tv_nsec = static_cast<long>(ns.count() % 1'000'000'000LL);
         return ts;
     }
+#endif
 
     template <typename Period>
     Timer createTimer(Dream::Functor callback, Period delay, Period interval, uint64_t id) {
@@ -38,6 +44,7 @@ namespace {
 }
 
 TimerQueue::TimerQueue(EventLoopImpl* loop) : loop_(loop) {
+#ifdef PLATFORM_LINUX
     tfd_ = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     if (tfd_ < 0) {
         LOG_ERROR("error, timerfd_create failed: {}", std::strerror(errno));
@@ -46,12 +53,16 @@ TimerQueue::TimerQueue(EventLoopImpl* loop) : loop_(loop) {
     timerChannel_ = std::make_unique<Channel>(loop_, tfd_);
     timerChannel_->setOnReadEvent([this] { handleRead(); });
     timerChannel_->enableReading();
+#endif
 }
 
 TimerQueue::~TimerQueue() {
+#ifdef PLATFORM_LINUX
     if (tfd_ >= 0) {
+        timerChannel_->disableAll();
         ::close(tfd_);
     }
+#endif
 }
 
 uint64_t TimerQueue::addTimer(Functor callback, std::chrono::milliseconds delay, std::chrono::milliseconds interval) {
@@ -63,22 +74,36 @@ uint64_t TimerQueue::addTimer(Functor callback, std::chrono::seconds delay, std:
 }
 
 void TimerQueue::removeTimer(uint64_t id) {
-    bool isRemoved = false;
-    for (auto it = timers_.begin(); it != timers_.end(); /**/) {
-        if (it->id == id) {
-            it = timers_.erase(it);
-            isRemoved = true;
-        } else {
-            ++it;
+    loop_->runInLoop([this, id] {
+        bool isRemoved = false;
+        for (auto it = timers_.begin(); it != timers_.end(); /**/) {
+            if (it->id == id) {
+                it = timers_.erase(it);
+                isRemoved = true;
+            } else {
+                ++it;
+            }
         }
-    }
 
-    if (isRemoved) {
-        armTimer();
+        if (isRemoved) {
+            armTimer();
+        }
+    });
+}
+
+int TimerQueue::getTimeout(int maximum) const {
+#ifdef PLATFORM_WINDOWS
+    if (!timers_.empty()) {
+        const auto remaining = timers_.begin()->expire - std::chrono::steady_clock::now();
+        const auto timeout = std::chrono::ceil<std::chrono::milliseconds>(remaining).count();
+        return static_cast<int>(std::clamp<int64_t>(timeout, 0, maximum));
     }
+#endif
+    return maximum;
 }
 
 void TimerQueue::handleRead() {
+#ifdef PLATFORM_LINUX
     uint64_t exp = 0;
     const ssize_t n = read(tfd_, &exp, 8);
     if (n != sizeof(uint64_t)) {
@@ -88,6 +113,11 @@ void TimerQueue::handleRead() {
         return;
     }
 
+#endif
+    processTimers();
+}
+
+void TimerQueue::processTimers() {
     TimePoint now = std::chrono::steady_clock::now();
     while (!timers_.empty() && timers_.begin()->expire <= now) {
         Timer t = std::move(timers_.extract(timers_.begin()).value());
@@ -103,6 +133,7 @@ void TimerQueue::handleRead() {
 }
 
 void TimerQueue::armTimer() const {
+#ifdef PLATFORM_LINUX
     if (timers_.empty()) {
         itimerspec its{};
         timerfd_settime(tfd_, 0, &its, nullptr);
@@ -117,6 +148,7 @@ void TimerQueue::armTimer() const {
     itimerspec its{};
     its.it_value = toTimespec(delta);
     timerfd_settime(tfd_, 0, &its, nullptr);
+#endif
 }
 
 uint64_t TimerQueue::addTimerPri(Functor callback, std::chrono::milliseconds delay, std::chrono::milliseconds interval) {

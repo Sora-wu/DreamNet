@@ -7,6 +7,8 @@
 
 #include <DreamNet/address.h>
 
+#include <cstddef>
+
 namespace Dream::detail {
     class Socket {
     public:
@@ -17,18 +19,20 @@ namespace Dream::detail {
         Socket& operator=(Socket&& socket) noexcept;
         ~Socket();
 
-        void setFd(int fd) {
+        void setFd(SocketFd fd) {
             fd_ = fd;
         }
 
-        [[nodiscard]] const int& getFd() const {
+        [[nodiscard]] SocketFd getFd() const {
             return fd_;
         }
 
         void bind(const Address& address);
         void listen();
         [[nodiscard]] int connect(const Address& address) const;
-        [[nodiscard]] int accept(Address& peerAddress);
+        [[nodiscard]] SocketFd accept(Address& peerAddress);
+        [[nodiscard]] std::ptrdiff_t send(const char* data, size_t size) const;
+        [[nodiscard]] std::ptrdiff_t receive(char* data, size_t size) const;
         void shutdown() const;
         void close();
 
@@ -37,7 +41,19 @@ namespace Dream::detail {
         void setReUsePort(bool on) const;
         void setKeepAlive(bool on) const;
 
+        [[nodiscard]] static int getLastError();
+        [[nodiscard]] static std::string errorString(int error);
+        [[nodiscard]] static bool isInterrupted(int error);
+        [[nodiscard]] static bool isWouldBlock(int error);
+        [[nodiscard]] static bool isConnectInProgress(int error);
+        [[nodiscard]] static int getError(SocketFd fd);
+        [[nodiscard]] static bool getLocalAddress(SocketFd fd, Address& address);
+        static void close(SocketFd fd);
+
     private:
-        int fd_ = -1;
+        void setOption(int level, int option, bool on) const;
+
+    private:
+        SocketFd fd_ = INVALID_SOCKET_FD;
     };
 }

@@ -87,6 +87,9 @@ void EpollPoller::updateChannel(Channel* channel) {
 }
 
 void EpollPoller::removeChannel(Channel* channel) {
+    if (channel->getStatus() == ChannelStatus::OUT_LOOP) {
+        return;
+    }
     update(EPOLL_CTL_DEL, channel);
     channel->setStatus(ChannelStatus::OUT_LOOP);
 }

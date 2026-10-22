@@ -6,20 +6,23 @@
 #pragma once
 
 #include <DreamNet/callbacks.h>
+#include <DreamNet/socketTypes.h>
 
 #include <memory>
+#include <string>
 
 namespace Dream {
-    class EventLoop;
-    class Address;
+    class DREAM_NET_API EventLoop;
+    class DREAM_NET_API Address;
 
     namespace detail {
         class TcpConnectionImpl;
     }
 
-    class TcpConnection : public std::enable_shared_from_this<TcpConnection> {
+    class DREAM_NET_API TcpConnection : public std::enable_shared_from_this<TcpConnection> {
     public:
-        TcpConnection(EventLoop* loop, const std::string& name, int fd, const Address& localAddress, const Address& remoteAddress);
+        TcpConnection(EventLoop* loop, const std::string& name, SocketFd fd, const Address& localAddress, const Address& remoteAddress);
+        ~TcpConnection();
         TcpConnection(const TcpConnection&) = delete;
         TcpConnection& operator=(const TcpConnection&) = delete;
 

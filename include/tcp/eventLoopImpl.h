@@ -7,6 +7,7 @@
 
 #include <DreamNet/eventLoop.h>
 #include <common/concurrentQueue.hpp>
+#include <common/wakeup.h>
 #include <tcp/timerQueue.h>
 
 #include <atomic>
@@ -22,6 +23,7 @@ namespace Dream::detail {
     class EventLoopImpl {
     public:
         EventLoopImpl();
+        ~EventLoopImpl();
 
         // 从公共 EventLoop 获取内部 Impl（仅供 detail 内部代码使用）
         [[nodiscard]] static EventLoopImpl* from(const Dream::EventLoop* loop) {
@@ -51,7 +53,7 @@ namespace Dream::detail {
         void onWakeUp() const;
 
     private:
-        int evtFD_ = -1;
+        Wakeup wakeup_;
         std::thread::id threadId_{};
         std::unique_ptr<Poller> poller_;
 

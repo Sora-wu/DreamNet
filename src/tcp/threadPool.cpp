@@ -7,7 +7,15 @@
 #include <tcp/eventLoopThread.h>
 #include <tcp/eventLoopImpl.h>
 
+#include <limits>
+
 using namespace Dream;
+
+detail::ThreadPool::~ThreadPool() {
+    for (auto thread : threads_) {
+        delete thread;
+    }
+}
 
 void detail::ThreadPool::start() {
     for (uint32_t i = 0; i < threadNum_; ++i) {

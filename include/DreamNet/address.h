@@ -5,12 +5,14 @@
 
 #pragma once
 
-#include <string>
+#include <DreamNet/define.h>
+#include <DreamNet/socketTypes.h>
 
-#include <netinet/in.h>
+#include <string>
+#include <cstdint>
 
 namespace Dream {
-    class Address {
+    class DREAM_NET_API Address {
     public:
         Address() = default;
         explicit Address(const sockaddr_in& addr) : addr_(addr) {}

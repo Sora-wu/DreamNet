@@ -8,13 +8,13 @@
 
 using namespace Dream::detail;
 
-Channel::Channel(EventLoopImpl* loop, int fd) : loopImpl_(loop), fd_(fd) {}
+Channel::Channel(EventLoopImpl* loop, SocketFd fd) : loopImpl_(loop), fd_(fd) {}
 
 Channel::~Channel() {
-    fd_ = -1;
+    fd_ = INVALID_SOCKET_FD;
 }
 
-int Channel::getFd() const {
+Dream::SocketFd Channel::getFd() const {
     return fd_;
 }
 
@@ -137,10 +137,9 @@ void Channel::handleEventWithGuard() const {
         if (onReadEvent_) {
             onReadEvent_();
         }
-        return;
     }
 
-    if (actualEvent_ & EVENT_WRITE) {
+    if ((actualEvent_ & EVENT_WRITE) && isWriting()) {
         if (onWriteEvent_) {
             onWriteEvent_();
         }

@@ -43,7 +43,7 @@ namespace Dream {
             void setWriteCompleteCallback(WriteCompleteCallback cb);
 
         private:
-            void onNewConnection(int fd, const Address& addr);
+            void onNewConnection(SocketFd fd, const Address& addr);
             void onConnectionClose(TcpConnectionPtr connection);
 
         private:

@@ -6,7 +6,9 @@
 #include <DreamNet/address.h>
 #include <common/log.hpp>
 
-#include <arpa/inet.h>
+#ifdef PLATFORM_LINUX
+    #include <arpa/inet.h>
+#endif
 
 using namespace Dream;
 

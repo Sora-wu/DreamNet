@@ -9,6 +9,7 @@
 #include <deque>
 #include <mutex>
 #include <optional>
+#include <limits>
 
 template <typename T, typename Deque = std::deque<T>>
 class ConcurrentQueue {

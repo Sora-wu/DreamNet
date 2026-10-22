@@ -18,6 +18,7 @@ namespace Dream {
         class ThreadPool {
         public:
             explicit ThreadPool(EventLoop* baseLoop) : baseLoop_(baseLoop) {}
+            ~ThreadPool();
 
             ThreadPool(const ThreadPool&) = delete;
             ThreadPool& operator=(const ThreadPool&) = delete;

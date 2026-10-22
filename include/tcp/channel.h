@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <DreamNet/socketTypes.h>
+
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -28,10 +30,10 @@ namespace Dream::detail {
         static constexpr uint32_t EVENT_ET = 0x20;
         using Functor = std::function<void()>;
 
-        Channel(EventLoopImpl* loop, int fd);
+        Channel(EventLoopImpl* loop, SocketFd fd);
         ~Channel();
 
-        [[nodiscard]] int getFd() const;
+        [[nodiscard]] SocketFd getFd() const;
         [[nodiscard]] ChannelStatus getStatus() const;
         void setStatus(ChannelStatus status);
 
@@ -65,7 +67,7 @@ namespace Dream::detail {
 
     private:
         EventLoopImpl* loopImpl_ = nullptr;
-        int fd_ = -1;
+        SocketFd fd_ = INVALID_SOCKET_FD;
 
         uint32_t listenEvent_{}; // channel自身关心的事件
         uint32_t actualEvent_{}; // 实际返回的事件

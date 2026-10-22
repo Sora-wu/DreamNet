@@ -9,13 +9,13 @@
 #include <DreamNet/callbacks.h>
 
 namespace Dream {
-    class EventLoop;
+    class DREAM_NET_API EventLoop;
 
     namespace detail {
         class TcpServerImpl;
     }
 
-    class TcpServer {
+    class DREAM_NET_API TcpServer {
     public:
         TcpServer(EventLoop* loop, const Address& address);
         ~TcpServer();

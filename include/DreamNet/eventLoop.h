@@ -13,7 +13,7 @@ namespace Dream::detail {
 }
 
 namespace Dream {
-    class EventLoop {
+    class DREAM_NET_API EventLoop {
     public:
         EventLoop();
         ~EventLoop();

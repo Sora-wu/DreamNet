@@ -9,6 +9,7 @@
 
 #include <sys/epoll.h>
 #include <vector>
+#include <atomic>
 
 namespace Dream::detail {
     class EpollPoller final : public Poller {
@@ -29,6 +30,6 @@ namespace Dream::detail {
     private:
         int epFD_ = -1;
         std::vector<epoll_event> events_;
-        uint32_t load_ = 0;             // 当前的epoll跑了多少个fd（负载）
+        std::atomic<uint32_t> load_ = 0; // 当前的epoll跑了多少个fd（负载）
     };
 } // namespace Dream::detail

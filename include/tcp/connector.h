@@ -16,7 +16,7 @@ namespace Dream::detail {
 
     class Connector : public std::enable_shared_from_this<Connector> {
     public:
-        using NewConnectionCallback = std::function<void(int fd, const Address& address)>;
+        using NewConnectionCallback = std::function<void(SocketFd fd, const Address& address)>;
         Connector(EventLoopImpl* loop, const Address& addr);
         void start();
         void stop();
