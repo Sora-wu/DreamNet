@@ -5,7 +5,9 @@
 
 #pragma once
 
-#include <common/socket.h>
+#include <DreamNet/socketTypes.h>
+
+#include <memory>
 
 namespace Dream::detail {
     class Wakeup {
@@ -20,11 +22,7 @@ namespace Dream::detail {
         void consume() const;
 
     private:
-#ifdef PLATFORM_WINDOWS
-        Socket reader_{SOCK_DGRAM};
-        Socket writer_{SOCK_DGRAM};
-#else
-        int fd_ = -1;
-#endif
+        class Impl;
+        std::unique_ptr<Impl> impl_;
     };
 }

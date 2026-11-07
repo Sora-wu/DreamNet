@@ -12,6 +12,7 @@ _deps
 CMakeUserPresets.json
 
 # build output
+.idea/
 build/
 tests/
 cmake-build-*/

@@ -25,6 +25,8 @@ EventLoopImpl::EventLoopImpl() :
     }
     wakeupChannel_->enableReading(); // 注册唤醒事件
     wakeupChannel_->setOnReadEvent([this] { onWakeUp(); });
+    wakeupChannel_->setOnErrorEvent([] { LOG_FATAL("wakeup channel error"); });
+    wakeupChannel_->setOnCloseEvent([] { LOG_FATAL("wakeup channel closed"); });
 
     timerQueue_ = std::make_unique<TimerQueue>(this);
 }
@@ -38,14 +40,14 @@ void EventLoopImpl::loop() {
     processPendingFunctors();
     while (!isQuit_) {
         activeChannels_.clear();
-        poller_->poll(activeChannels_, timerQueue_->getTimeout(TIMEOUT));
+        // 定时回调也可能投递任务，有待执行任务时不能进入阻塞轮询。
+        const int timeout = pendingFunctors_.empty() ? timerQueue_->getTimeout(TIMEOUT) : 0;
+        poller_->poll(activeChannels_, timeout);
         for (Channel* channel : activeChannels_) {
             channel->handleEvent();
         }
         processPendingFunctors();
-#ifdef PLATFORM_WINDOWS
         timerQueue_->processTimers();
-#endif
     }
 
     LOG_INFO("Event Loop exit");
@@ -57,7 +59,9 @@ void EventLoopImpl::quit() {
 }
 
 void EventLoopImpl::wakeup() const {
-    wakeup_.notify();
+    if (!wakeupPending_.exchange(true)) {
+        wakeup_.notify();
+    }
 }
 
 void EventLoopImpl::runInLoop(Functor func) {
@@ -114,6 +118,8 @@ void EventLoopImpl::processPendingFunctors() {
     std::deque<Functor> tmp;
 
     callingPendingFunctors_ = true;
+    // 先重新允许通知，再取任务快照；快照之后入队的任务会留下新的唤醒。
+    wakeupPending_ = false;
     pendingFunctors_.pop_all(tmp);
     for (auto& func : tmp) {
         func();

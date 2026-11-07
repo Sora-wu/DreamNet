@@ -6,7 +6,6 @@
 #pragma once
 
 #include <DreamNet/callbacks.h>
-#include <tcp/channel.h>
 
 #include <cstdint>
 #include <chrono>
@@ -14,7 +13,7 @@
 #include <atomic>
 
 namespace Dream::detail {
-    class Channel;
+    class EventLoopImpl;
 
     using TimePoint = std::chrono::steady_clock::time_point;
     struct Timer {
@@ -35,7 +34,7 @@ namespace Dream::detail {
     class TimerQueue {
     public:
         explicit TimerQueue(EventLoopImpl* loop);
-        ~TimerQueue();
+        ~TimerQueue() = default;
         TimerQueue(const TimerQueue&) = delete;
         TimerQueue& operator=(const TimerQueue&) = delete;
 
@@ -46,20 +45,12 @@ namespace Dream::detail {
         void processTimers();
 
     private:
-        void handleRead();
-        void armTimer() const;
-
         uint64_t addTimerPri(Functor callback, std::chrono::milliseconds delay, std::chrono::milliseconds interval);
         uint64_t addTimerPri(Functor callback, std::chrono::seconds delay, std::chrono::seconds interval);
 
     private:
         EventLoopImpl* loop_ = nullptr;
         std::atomic<uint64_t> currentID_ = 0;
-#ifdef PLATFORM_LINUX
-        int tfd_ = -1;
-        std::unique_ptr<Channel> timerChannel_;
-#endif
-
         std::multiset<Timer> timers_;
     };
 }

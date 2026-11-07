@@ -9,8 +9,9 @@ DreamNet 是一个面向 Linux 和 Windows 的 TCP 网络库。通过事件循�
 ## ✨ 项目特性
 
 - 🔄 **Reactor 模型**：以 `EventLoop` 为中心，统一管理 I/O 事件、待执行任务与定时任务。
-- 🐧 **Linux 支持**：使用 epoll 监听事件，eventfd 实现跨线程唤醒，timerfd 驱动定时器。
-- 🪟 **Windows 支持**：使用 WSAPoll 监听 Socket，本地 UDP Socket 实现唤醒，通过轮询超时调度定时任务。
+- 🐧 **Linux 支持**：使用 epoll 监听事件。
+- 🪟 **Windows 支持**：使用 WSAPoll 监听 Socket。
+- 🌍 **统一调度接口**：Linux 使用 eventfd 唤醒，Windows 使用本地 TCP 连接对；两端共用基于单调时钟和轮询超时的定时调度。
 - 🧵 **可选工作线程池**：主循环接收新连接，根据事件循环当前监听的句柄数量选择工作循环。
 - 📡 **TCP 服务端与客户端**：支持连接回调、消息回调、服务端广播，以及客户端连接失败和非主动断开后的自动重连。
 - 📦 **收发缓冲**：自动扩容、保留未消费数据，支持 `std::span`、`std::string_view` 和缓冲高水位回调。
@@ -50,7 +51,7 @@ flowchart TD
 | CMake | 3.21 或更高版本 |
 | C++ | 支持 C++23 的编译器及标准库，包含 `std::format`、`std::print` 和 `std::chrono` 时区功能 |
 | Windows | 本机已使用 Visual Studio 2026、Windows SDK 和 x64 配置验证 |
-| Linux | 支持 epoll、 eventfd 和 timerfd 的 Linux 环境 |
+| Linux | 支持 epoll 和 eventfd 的 Linux 环境 |
 
 以下命令均在项目根目录执行，默认会构建动态库与 examples。
 
@@ -81,7 +82,7 @@ cmake --build build/linux --parallel
 | 选项 | 默认值 | 说明 |
 | --- | --- | --- |
 | `DREAM_BUILD_EXAMPLES` | `ON` | 构建 `echoServer` 和 `echoClient` |
-| `DREAM_BUILD_TESTS` | `OFF` | 构建本地集成测试，需要工作区中存在 `tests/` 目录 |
+| `DREAM_BUILD_TESTS` | `OFF` | 构建 `test/` 中的事件循环集成测试 |
 
 只构建库时，可以在配置命令中添加 `-DDREAM_BUILD_EXAMPLES=OFF`。
 
@@ -209,13 +210,21 @@ TCP 提供字节流，一次消息回调可能包含半条消息或多条消息�
 | --- | --- | --- |
 | 事件轮询 | epoll | WSAPoll |
 | I/O 触发方式 | 边缘触发 | 电平触发 |
-| 跨线程唤醒 | eventfd | 本地互连 UDP Socket |
-| 定时任务 | timerfd | 根据最近到期时间计算轮询超时 |
+| 跨线程唤醒 | eventfd | 本地 TCP 连接对 |
+| 定时任务 | 根据最近到期时间计算轮询超时 | 根据最近到期时间计算轮询超时 |
 | Socket 句柄 | `int` | 原生 `SOCKET`，保留完整位宽 |
 | 错误获取 | `errno` | `WSAGetLastError()` |
 | 动态库符号 | 默认导出机制 | `DREAM_NET_API` 导入、导出 |
 
 平台由 CMake 自动选择。链接 `Dream::Net` 后，使用方会继承 `PLATFORM_LINUX` 或 `PLATFORM_WINDOWS`，无需另外定义。
+
+唤醒机制通过相同的 `Wakeup` 接口访问，私有实现隐藏平台细节。CMake 在 Linux 选择 `src/common/wakeup_linux.cpp`，在 Windows 选择 `src/common/wakeup_windows.cpp`，公共头文件、事件循环和定时器均无需为唤醒机制增加平台宏。
+
+Linux 每个循环只创建一个非阻塞、close-on-exec 的 `eventfd`，无需本地端口。Windows 在 `127.0.0.1` 临时端口上建立 TCP 连接对，建立过程最多等待 5 秒，完成后关闭监听 Socket；两个连接端均为非阻塞、不可继承，并启用 `TCP_NODELAY`。任务保存在进程内的并发队列，计数器或 TCP 字节只用于通知循环检查任务。循环取得任务快照前重新允许通知，同一批尚未处理的通知会合并。
+
+定时器使用 `std::chrono::steady_clock`，每轮将最近到期时间向上取整到毫秒作为轮询超时，到期任务在循环线程执行。跨线程添加或取消定时器通过同一任务队列唤醒循环；存在待执行任务时，轮询超时为零，避免定时回调投递的任务等待空闲超时。
+
+Windows 的 TCP 唤醒经过本地网络栈，占用本地端口，使用可靠字节流传递通知。内部唤醒通道发生不可恢复的读写错误、连接关闭或通道错误事件时，库会记录致命错误并退出，避免静默失去唤醒或循环空转。毫秒轮询超时不提供亚毫秒或硬实时精度，回调耗时与系统调度均可能推迟定时任务执行。
 
 Windows 的 Winsock 初始化与清理由库管理。公共类型差异集中在 [socketTypes.h](include/DreamNet/socketTypes.h)，导出定义集中在 [define.h](include/DreamNet/define.h)；Socket 操作、错误处理与唤醒机制封装在内部实现中。
 
@@ -264,7 +273,7 @@ Windows 下，运行应用程序时还需要将安装目录中的 `bin/DreamNet.
 
 ## ✅ 验证记录
 
-已在 Windows、VS2026 x64 环境中完成以下验证，Debug 与 Release 均通过：
+此前已在 Windows、VS2026 x64 环境中完成以下验证，Debug 与 Release 均通过：
 
 | 验证项 | 内容 |
 | --- | --- |
@@ -276,14 +285,17 @@ Windows 下，运行应用程序时还需要将安装目录中的 `bin/DreamNet.
 
 另已验证 Release 安装包可由独立 CMake 项目通过 `find_package(Dream REQUIRED COMPONENTS Net)` 引用并运行。
 
-若本地保留了 `tests/` 目录，可在配置时启用 `-DDREAM_BUILD_TESTS=ON`，构建后运行：
+当前实现已在 Linux、Clang 23.1.4 的 Debug 构建中通过 `test/` 的五项回归测试，每项连续运行 20 次均通过：四线程共投递 20,000 个任务且各执行一次、跨线程提前定时与到期顺序、定时回调中的嵌套任务、跨线程退出空闲循环、连续 100 轮唤醒空闲循环。另用三个并发 TCP 客户端验证 Echo 示例，共核对 3 MiB 二进制数据。当前环境无 Windows 工具链，本次 Windows 唤醒实现尚未编译和实机验证。
 
-```powershell
-ctest --test-dir build/windows -C Debug --output-on-failure
-./tests/runExamples.ps1 -BuildDirectory ./build/windows -Configuration Debug
+启用并运行随仓库提供的测试：
+
+```sh
+cmake -S . -B build/linux -DCMAKE_BUILD_TYPE=Debug -DDREAM_BUILD_TESTS=ON
+cmake --build build/linux --parallel
+ctest --test-dir build/linux --output-on-failure
 ```
 
-集成测试使用端口 `31451`、`31452`，Echo 示例使用端口 `11451`。目前的实机验证记录来自 Windows，Linux 分支尚未在本轮修改中运行验证。
+Windows 可在构建时选择 Debug 或 Release，再执行 `ctest --test-dir build/windows -C Debug --output-on-failure`。事件循环测试在 Linux 使用 `eventfd`，在 Windows 使用自动分配的本地 TCP 端口；Echo 示例使用 TCP 端口 `11451`。
 
 ## 🗂️ 目录结构
 
@@ -299,6 +311,7 @@ DreamNet/
 │   ├── DreamNet/          # 对外接口实现
 │   ├── common/            # 平台相关的基础设施实现
 │   └── tcp/               # Reactor 与 TCP 内部实现
+├── test/                  # 跨线程唤醒与定时调度回归测试
 ├── CMakeLists.txt
 └── LICENSE
 ```

@@ -61,6 +61,7 @@ namespace Dream::detail {
         std::vector<Channel*> activeChannels_;
 
         std::atomic_bool isQuit_ = false;
+        mutable std::atomic_bool wakeupPending_ = false;
 
         std::atomic_bool callingPendingFunctors_ = false;
         ConcurrentQueue<Functor> pendingFunctors_;
